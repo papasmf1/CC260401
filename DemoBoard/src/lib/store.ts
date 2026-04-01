@@ -17,7 +17,10 @@ export async function getPosts(): Promise<Post[]> {
     .from('posts')
     .select('*')
     .order('created_at', { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('[getPosts] Supabase error:', error.message);
+    return [];
+  }
   return (data ?? []).map(toPost);
 }
 
@@ -27,7 +30,10 @@ export async function getPost(id: number): Promise<Post | null> {
     .select('*')
     .eq('id', id)
     .single();
-  if (error) return null;
+  if (error) {
+    console.error('[getPost] Supabase error:', error.message);
+    return null;
+  }
   return toPost(data);
 }
 
@@ -53,15 +59,21 @@ export async function updatePost(
     .eq('id', id)
     .select()
     .single();
-  if (error) return null;
+  if (error) {
+    console.error('[updatePost] Supabase error:', error.message);
+    return null;
+  }
   return toPost(data);
 }
 
 export async function deletePost(id: number): Promise<boolean> {
   const { error } = await getSupabase().from('posts').delete().eq('id', id);
+  if (error) console.error('[deletePost] Supabase error:', error.message);
   return !error;
 }
 
 export async function incrementViews(id: number): Promise<void> {
-  await getSupabase().rpc('increment_views', { post_id: id });
+  // RPC 실패해도 페이지 로드에 영향 없도록 에러를 무시
+  const { error } = await getSupabase().rpc('increment_views', { post_id: id });
+  if (error) console.error('[incrementViews] RPC error:', error.message);
 }
