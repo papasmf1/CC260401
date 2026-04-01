@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>블럭깨기 게임</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #0a0a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', sans-serif;
+      color: #fff;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, #00d4ff, #ff00ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+    }
+
+    #info {
+      display: flex;
+      gap: 40px;
+      margin-bottom: 12px;
+      font-size: 1rem;
+      letter-spacing: 1px;
+    }
+
+    #info span {
+      color: #aaa;
+    }
+
+    #info strong {
+      color: #00d4ff;
+      font-size: 1.1rem;
+    }
+
+    #gameContainer {
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      border: 2px solid #222;
+      border-radius: 8px;
+      box-shadow: 0 0 40px rgba(0, 212, 255, 0.2), 0 0 80px rgba(255, 0, 255, 0.1);
+    }
+
+    #overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.75);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+
+    #overlay h2 {
+      font-size: 2.4rem;
+      letter-spacing: 3px;
+    }
+
+    #overlay p {
+      color: #ccc;
+      font-size: 1rem;
+    }
+
+    #overlay button {
+      margin-top: 8px;
+      padding: 12px 36px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      letter-spacing: 2px;
+      border: none;
+      border-radius: 30px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #00d4ff, #ff00ff);
+      color: #fff;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
+    }
+
+    #overlay button:hover {
+      transform: scale(1.06);
+      box-shadow: 0 6px 28px rgba(0, 212, 255, 0.6);
+    }
+
+    #hint {
+      margin-top: 10px;
+      font-size: 0.85rem;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>Block Breaker</h1>
+  <div id="info">
+    <div><span>SCORE </span><strong id="scoreDisplay">0</strong></div>
+    <div><span>LEVEL </span><strong id="levelDisplay">1</strong></div>
+    <div><span>LIVES </span><strong id="livesDisplay">3</strong></div>
+  </div>
+
+  <div id="gameContainer">
+    <canvas id="canvas" width="520" height="600"></canvas>
+    <div id="overlay">
+      <h2 style="background:linear-gradient(90deg,#00d4ff,#ff00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">BLOCK BREAKER</h2>
+      <p>← → 키 또는 마우스로 패들을 움직이세요</p>
+      <button id="startBtn">START GAME</button>
+    </div>
+  </div>
+  <div id="hint">Space: 일시정지 &nbsp;|&nbsp; R: 재시작</div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('startBtn');
+    const scoreDisplay = document.getElementById('scoreDisplay');
+    const levelDisplay = document.getElementById('levelDisplay');
+    const livesDisplay = document.getElementById('livesDisplay');
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // ── 게임 상태 ──────────────────────────────
+    let score, lives, level, gameState; // 'idle' | 'playing' | 'paused' | 'over' | 'win'
+    let animId;
+
+    // ── 패들 ──────────────────────────────────
+    const PADDLE = { w: 90, h: 12, y: H - 40, x: 0, speed: 7, color: '#00d4ff' };
+
+    // ── 공 ────────────────────────────────────
+    let ball;
+
+    // ── 블럭 ──────────────────────────────────
+    const ROWS = 5, COLS = 10;
+    const BW = 44, BH = 18, BPAD = 4;
+    const BLOCK_COLORS = ['#ff4d6d','#ff9500','#ffdd00','#4dff91','#00d4ff','#bf5fff'];
+    let blocks = [];
+
+    // ── 파티클 ────────────────────────────────
+    let particles = [];
+
+    // ── 입력 ──────────────────────────────────
+    const keys = {};
+    document.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (e.code === 'Space') togglePause();
+      if (e.code === 'KeyR') initGame();
+    });
+    document.addEventListener('keyup', e => keys[e.code] = false);
+    canvas.addEventListener('mousemove', e => {
+      if (gameState !== 'playing') return;
+      const rect = canvas.getBoundingClientRect();
+      PADDLE.x = Math.max(0, Math.min(W - PADDLE.w, e.clientX - rect.left - PADDLE.w / 2));
+    });
+
+    // ── 초기화 ────────────────────────────────
+    function initGame() {
+      score = 0; lives = 3; level = 1;
+      updateHUD();
+      resetBall();
+      PADDLE.x = (W - PADDLE.w) / 2;
+      buildBlocks();
+      particles = [];
+      gameState = 'playing';
+      overlay.style.display = 'none';
+    }
+
+    function resetBall() {
+      const angle = (Math.random() * 60 + 60) * (Math.PI / 180);
+      const speed = 4 + level * 0.4;
+      ball = {
+        x: W / 2, y: H - 70,
+        vx: speed * Math.cos(angle) * (Math.random() < 0.5 ? 1 : -1),
+        vy: -speed * Math.sin(angle),
+        r: 8, trail: []
+      };
+    }
+
+    function buildBlocks() {
+      blocks = [];
+      const offsetX = (W - COLS * (BW + BPAD) + BPAD) / 2;
+      const offsetY = 55;
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const hp = ROWS - r; // 위쪽 줄일수록 HP 높음
+          blocks.push({
+            x: offsetX + c * (BW + BPAD),
+            y: offsetY + r * (BH + BPAD),
+            w: BW, h: BH,
+            hp, maxHp: hp,
+            color: BLOCK_COLORS[r % BLOCK_COLORS.length],
+            alive: true
+          });
+        }
+      }
+    }
+
+    // ── HUD ───────────────────────────────────
+    function updateHUD() {
+      scoreDisplay.textContent = score;
+      levelDisplay.textContent = level;
+      livesDisplay.textContent = lives;
+    }
+
+    // ── 파티클 ────────────────────────────────
+    function spawnParticles(x, y, color, count = 12) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 3 + 1;
+        particles.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1, decay: Math.random() * 0.04 + 0.02,
+          r: Math.random() * 3 + 1,
+          color
+        });
+      }
+    }
+
+    function updateParticles() {
+      particles = particles.filter(p => p.life > 0);
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        p.vy += 0.08;
+        p.life -= p.decay;
+      });
+    }
+
+    function drawParticles() {
+      particles.forEach(p => {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // ── 충돌 ──────────────────────────────────
+    function collideAABB(bx, by, br, rx, ry, rw, rh) {
+      const nearX = Math.max(rx, Math.min(rx + rw, bx));
+      const nearY = Math.max(ry, Math.min(ry + rh, by));
+      return (bx - nearX) ** 2 + (by - nearY) ** 2 < br * br;
+    }
+
+    function resolveBlock(b) {
+      const overlapL = (ball.x + ball.r) - b.x;
+      const overlapR = (b.x + b.w) - (ball.x - ball.r);
+      const overlapT = (ball.y + ball.r) - b.y;
+      const overlapB = (b.y + b.h) - (ball.y - ball.r);
+      const minH = Math.min(overlapL, overlapR);
+      const minV = Math.min(overlapT, overlapB);
+      if (minH < minV) ball.vx *= -1;
+      else ball.vy *= -1;
+    }
+
+    // ── 업데이트 ──────────────────────────────
+    function update() {
+      // 패들 키보드 이동
+      if (keys['ArrowLeft'])  PADDLE.x = Math.max(0, PADDLE.x - PADDLE.speed);
+      if (keys['ArrowRight']) PADDLE.x = Math.min(W - PADDLE.w, PADDLE.x + PADDLE.speed);
+
+      // 공 이동
+      ball.trail.push({ x: ball.x, y: ball.y });
+      if (ball.trail.length > 8) ball.trail.shift();
+
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+
+      // 벽 충돌
+      if (ball.x - ball.r < 0)   { ball.x = ball.r;       ball.vx *= -1; }
+      if (ball.x + ball.r > W)   { ball.x = W - ball.r;   ball.vx *= -1; }
+      if (ball.y - ball.r < 0)   { ball.y = ball.r;       ball.vy *= -1; }
+
+      // 패들 충돌
+      if (collideAABB(ball.x, ball.y, ball.r, PADDLE.x, PADDLE.y, PADDLE.w, PADDLE.h) && ball.vy > 0) {
+        ball.vy *= -1;
+        // 패들 위치에 따라 각도 조절
+        const hit = (ball.x - (PADDLE.x + PADDLE.w / 2)) / (PADDLE.w / 2);
+        ball.vx = hit * 6;
+        spawnParticles(ball.x, PADDLE.y, '#00d4ff', 6);
+      }
+
+      // 바닥 (생명 감소)
+      if (ball.y - ball.r > H) {
+        lives--;
+        updateHUD();
+        spawnParticles(ball.x, H - 10, '#ff4d6d', 20);
+        if (lives <= 0) { gameOver(); return; }
+        resetBall();
+      }
+
+      // 블럭 충돌
+      let allDead = true;
+      for (const b of blocks) {
+        if (!b.alive) continue;
+        allDead = false;
+        if (collideAABB(ball.x, ball.y, ball.r, b.x, b.y, b.w, b.h)) {
+          resolveBlock(b);
+          b.hp--;
+          if (b.hp <= 0) {
+            b.alive = false;
+            score += 10 * level;
+            spawnParticles(b.x + b.w / 2, b.y + b.h / 2, b.color, 14);
+          } else {
+            spawnParticles(b.x + b.w / 2, b.y + b.h / 2, b.color, 5);
+          }
+          updateHUD();
+          break;
+        }
+      }
+
+      if (allDead) nextLevel();
+      updateParticles();
+    }
+
+    function nextLevel() {
+      level++;
+      updateHUD();
+      buildBlocks();
+      resetBall();
+      particles = [];
+      // 레벨 5 이상이면 승리
+      if (level > 5) { winGame(); }
+    }
+
+    function gameOver() {
+      gameState = 'over';
+      showOverlay('GAME OVER', `최종 점수: ${score}`, '다시 시작');
+    }
+
+    function winGame() {
+      gameState = 'win';
+      showOverlay('YOU WIN!', `최종 점수: ${score}`, '다시 시작');
+    }
+
+    function showOverlay(title, sub, btnText) {
+      overlay.innerHTML = `
+        <h2 style="font-size:2.2rem;background:linear-gradient(90deg,#00d4ff,#ff00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:3px;">${title}</h2>
+        <p style="color:#ccc;font-size:1.1rem;">${sub}</p>
+        <button id="startBtn" style="margin-top:8px;padding:12px 36px;font-size:1.1rem;font-weight:bold;letter-spacing:2px;border:none;border-radius:30px;cursor:pointer;background:linear-gradient(135deg,#00d4ff,#ff00ff);color:#fff;box-shadow:0 4px 20px rgba(0,212,255,0.4);">${btnText}</button>
+      `;
+      overlay.style.display = 'flex';
+      document.getElementById('startBtn').addEventListener('click', initGame);
+    }
+
+    function togglePause() {
+      if (gameState === 'playing') {
+        gameState = 'paused';
+        showOverlay('PAUSED', '', '계속하기');
+        document.getElementById('startBtn').addEventListener('click', () => {
+          overlay.style.display = 'none';
+          gameState = 'playing';
+        });
+      }
+    }
+
+    // ── 렌더링 ────────────────────────────────
+    function draw() {
+      // 배경
+      ctx.fillStyle = '#0a0a1a';
+      ctx.fillRect(0, 0, W, H);
+
+      // 격자 배경 효과
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < W; x += 30) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      }
+      for (let y = 0; y < H; y += 30) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+
+      // 블럭
+      for (const b of blocks) {
+        if (!b.alive) continue;
+        const alpha = 0.4 + 0.6 * (b.hp / b.maxHp);
+        ctx.globalAlpha = alpha;
+
+        // 블럭 본체
+        const grad = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h);
+        grad.addColorStop(0, lighten(b.color, 30));
+        grad.addColorStop(1, b.color);
+        ctx.fillStyle = grad;
+        roundRect(b.x, b.y, b.w, b.h, 4);
+        ctx.fill();
+
+        // 블럭 테두리 glow
+        ctx.globalAlpha = 0.5 * (b.hp / b.maxHp);
+        ctx.strokeStyle = b.color;
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = b.color;
+        ctx.shadowBlur = 6;
+        roundRect(b.x, b.y, b.w, b.h, 4);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // HP > 1이면 HP 표시
+        if (b.maxHp > 1) {
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 10px Segoe UI';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(b.hp, b.x + b.w / 2, b.y + b.h / 2);
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      // 패들
+      const pGrad = ctx.createLinearGradient(PADDLE.x, PADDLE.y, PADDLE.x + PADDLE.w, PADDLE.y);
+      pGrad.addColorStop(0, '#00d4ff');
+      pGrad.addColorStop(0.5, '#ffffff');
+      pGrad.addColorStop(1, '#00d4ff');
+      ctx.fillStyle = pGrad;
+      ctx.shadowColor = '#00d4ff';
+      ctx.shadowBlur = 14;
+      roundRect(PADDLE.x, PADDLE.y, PADDLE.w, PADDLE.h, 6);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // 공 궤적
+      for (let i = 0; i < ball.trail.length; i++) {
+        const t = ball.trail[i];
+        const a = (i / ball.trail.length) * 0.4;
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#ff00ff';
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, ball.r * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // 공
+      const bGrad = ctx.createRadialGradient(ball.x - 2, ball.y - 2, 1, ball.x, ball.y, ball.r);
+      bGrad.addColorStop(0, '#ffffff');
+      bGrad.addColorStop(1, '#ff00ff');
+      ctx.fillStyle = bGrad;
+      ctx.shadowColor = '#ff00ff';
+      ctx.shadowBlur = 20;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // 파티클
+      drawParticles();
+    }
+
+    // ── 헬퍼 ──────────────────────────────────
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    function lighten(hex, amount) {
+      const num = parseInt(hex.replace('#',''), 16);
+      const r = Math.min(255, (num >> 16) + amount);
+      const g = Math.min(255, ((num >> 8) & 0xff) + amount);
+      const b = Math.min(255, (num & 0xff) + amount);
+      return `rgb(${r},${g},${b})`;
+    }
+
+    // ── 게임 루프 ─────────────────────────────
+    function loop() {
+      if (gameState === 'playing') update();
+      draw();
+      animId = requestAnimationFrame(loop);
+    }
+
+    // ── 시작 버튼 ─────────────────────────────
+    startBtn.addEventListener('click', initGame);
+
+    // 초기 렌더링 (오버레이 상태)
+    gameState = 'idle';
+    ball = { x: W/2, y: H-70, vx: 3, vy: -4, r: 8, trail: [] };
+    PADDLE.x = (W - PADDLE.w) / 2;
+    buildBlocks();
+    loop();
+  </script>
+</body>
+</html>
