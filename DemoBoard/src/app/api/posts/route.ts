@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getPosts, createPost } from '@/lib/store';
 
 export async function GET() {
-  return NextResponse.json(getPosts());
+  const posts = await getPosts();
+  return NextResponse.json(posts);
 }
 
 export async function POST(request: Request) {
@@ -11,6 +12,6 @@ export async function POST(request: Request) {
   if (!title || !author || !content) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
   }
-  const post = createPost({ title, author, content });
+  const post = await createPost({ title, author, content });
   return NextResponse.json(post, { status: 201 });
 }

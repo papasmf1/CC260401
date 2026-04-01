@@ -15,11 +15,11 @@ interface HomeProps {
   searchParams: { q?: string; page?: string };
 }
 
-export default function HomePage({ searchParams }: HomeProps) {
+export default async function HomePage({ searchParams }: HomeProps) {
   const q = searchParams.q ?? '';
   const page = Math.max(1, Number(searchParams.page ?? 1));
 
-  let posts = getPosts().slice().reverse();
+  let posts = await getPosts(); // 최신순 정렬 (Supabase에서 처리)
   if (q) {
     posts = posts.filter(
       (p) =>

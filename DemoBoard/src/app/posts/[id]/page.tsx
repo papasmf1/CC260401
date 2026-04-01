@@ -13,11 +13,12 @@ function formatDate(iso: string) {
   });
 }
 
-export default function PostPage({ params }: { params: { id: string } }) {
+export default async function PostPage({ params }: { params: { id: string } }) {
   const id = Number(params.id);
   if (isNaN(id)) notFound();
-  incrementViews(id);
-  const post = getPost(id);
+
+  await incrementViews(id);
+  const post = await getPost(id);
   if (!post) notFound();
 
   return (
