@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { getPosts } from '@/lib/store';
 
+export const dynamic = 'force-dynamic';
+
 const PAGE_SIZE = 10;
 
 function formatDate(iso: string) {

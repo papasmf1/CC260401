@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 import { Post } from '@/types';
 
 function toPost(row: Record<string, unknown>): Post {
@@ -13,7 +13,7 @@ function toPost(row: Record<string, unknown>): Post {
 }
 
 export async function getPosts(): Promise<Post[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('posts')
     .select('*')
     .order('created_at', { ascending: false });
@@ -22,7 +22,7 @@ export async function getPosts(): Promise<Post[]> {
 }
 
 export async function getPost(id: number): Promise<Post | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('posts')
     .select('*')
     .eq('id', id)
@@ -34,7 +34,7 @@ export async function getPost(id: number): Promise<Post | null> {
 export async function createPost(
   input: Omit<Post, 'id' | 'createdAt' | 'views'>
 ): Promise<Post> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('posts')
     .insert({ title: input.title, author: input.author, content: input.content })
     .select()
@@ -47,7 +47,7 @@ export async function updatePost(
   id: number,
   input: Partial<Omit<Post, 'id' | 'createdAt' | 'views'>>
 ): Promise<Post | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('posts')
     .update(input)
     .eq('id', id)
@@ -58,10 +58,10 @@ export async function updatePost(
 }
 
 export async function deletePost(id: number): Promise<boolean> {
-  const { error } = await supabase.from('posts').delete().eq('id', id);
+  const { error } = await getSupabase().from('posts').delete().eq('id', id);
   return !error;
 }
 
 export async function incrementViews(id: number): Promise<void> {
-  await supabase.rpc('increment_views', { post_id: id });
+  await getSupabase().rpc('increment_views', { post_id: id });
 }

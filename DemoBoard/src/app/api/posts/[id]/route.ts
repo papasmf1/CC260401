@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getPost, updatePost, deletePost } from '@/lib/store';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   const post = await getPost(Number(params.id));
   if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });

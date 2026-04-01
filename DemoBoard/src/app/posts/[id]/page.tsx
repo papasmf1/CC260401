@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { getPost, incrementViews } from '@/lib/store';
 import DeleteButton from '@/components/DeleteButton';
 
+export const dynamic = 'force-dynamic';
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('ko-KR', {
     year: 'numeric',
